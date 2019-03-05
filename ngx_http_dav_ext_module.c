@@ -1350,7 +1350,7 @@ ngx_http_dav_ext_unlock_handler(ngx_http_request_t *r)
 
     if (node == NULL || node->token != token) {
         ngx_shmtx_unlock(&lock->shpool->mutex);
-        return NGX_HTTP_NO_CONTENT;
+        return NGX_HTTP_PRECONDITION_FAILED;
     }
 
     ngx_queue_remove(&node->queue);
