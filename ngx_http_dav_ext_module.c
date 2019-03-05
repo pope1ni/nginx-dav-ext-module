@@ -37,6 +37,7 @@ typedef struct {
     off_t                        size;
 
     time_t                       lock_expire;
+    ngx_str_t                    lock_owner;
     ngx_str_t                    lock_root;
     uint32_t                     lock_token;
 
@@ -990,6 +991,8 @@ ngx_http_dav_ext_set_locks(ngx_http_request_t *r,
     entry->lock_expire = node->expire;
     entry->lock_token = node->token;
 
+    // FIXME: entry->lock_owner.data
+
     entry->lock_root.data = ngx_pnalloc(r->pool, node->len);
     if (entry->lock_root.data == NULL) {
         ngx_shmtx_unlock(&lock->shpool->mutex);
@@ -1272,6 +1275,7 @@ ngx_http_dav_ext_lock_response(ngx_http_request_t *r, ngx_uint_t status,
     ngx_memzero(&entry, sizeof(ngx_http_dav_ext_entry_t));
 
     entry.lock_expire = now + timeout;
+    ngx_str_set(&entry.lock_owner, "");  // FIXME
     entry.lock_root = r->uri;
     entry.lock_infinite = depth ? 1 : 0;
     entry.lock_token = token;
@@ -1817,6 +1821,7 @@ ngx_http_dav_ext_format_lockdiscovery(ngx_http_request_t *r, u_char *dst,
                      "<D:locktype><D:write/></D:locktype>\n"
                      "<D:lockscope><D:exclusive/></D:lockscope>\n"
                      "<D:depth>infinity</D:depth>\n"
+                     "<D:owner><D:href></D:href></D:owner>\n"
                      "<D:timeout>Second-</D:timeout>\n"
                      "<D:locktoken><D:href></D:href></D:locktoken>\n"
                      "<D:lockroot><D:href></D:href></D:lockroot>\n"
@@ -1828,6 +1833,11 @@ ngx_http_dav_ext_format_lockdiscovery(ngx_http_request_t *r, u_char *dst,
 
         /* token */
         len += ngx_http_dav_ext_format_token(NULL, entry->lock_token, 0);
+
+        /* owner */
+        len += entry->lock_owner.len + ngx_escape_html(NULL,
+                                                       entry->lock_owner.data,
+                                                       entry->lock_owner.len);
 
         /* lockroot */
         len += entry->lock_root.len + ngx_escape_html(NULL,
@@ -1867,6 +1877,13 @@ ngx_http_dav_ext_format_lockdiscovery(ngx_http_request_t *r, u_char *dst,
     dst = (u_char *) ngx_http_dav_ext_format_token(dst, entry->lock_token, 0);
     dst = ngx_cpymem(dst, "</D:href></D:locktoken>\n",
                      sizeof("</D:href></D:locktoken>\n") - 1);
+
+    dst = ngx_cpymem(dst, "<D:owner><D:href>",
+                     sizeof("<D:owner><D:href>") - 1);
+    dst = (u_char *) ngx_escape_html(dst, entry->lock_owner.data,
+                                     entry->lock_owner.len);
+    dst = ngx_cpymem(dst, "</D:href></D:owner>\n",
+                     sizeof("</D:href></D:owner>\n") - 1);
 
     dst = ngx_cpymem(dst, "<D:lockroot><D:href>",
                      sizeof("<D:lockroot><D:href>") - 1);
